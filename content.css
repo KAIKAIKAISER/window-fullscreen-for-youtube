@@ -108,7 +108,6 @@ html.wfs-active #wfs-ambient-glass.wfs-has-side-bars .wfs-ambient-bar {
 }
 
 html.wfs-active #movie_player:not(.miniplayer) video.html5-main-video {
-  position: relative;
   z-index: 1 !important;
 }
 
