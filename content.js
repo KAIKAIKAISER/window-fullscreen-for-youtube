@@ -17,6 +17,12 @@
   const PANEL_CLASS = 'wfs-panel';
   const PANEL_TITLE = 'Window fullscreen';
   const MIN_CHAT_WIDTH = 280;
+  const AMBIENT_GLASS_ID = 'wfs-ambient-glass';
+  const AMBIENT_SAMPLE_WIDTH = 18;
+  const AMBIENT_SAMPLE_HEIGHT = 10;
+  const AMBIENT_SAMPLE_INTERVAL_MS = 80;
+  const AMBIENT_DEFAULT_COLOR = [18, 18, 18];
+  const AMBIENT_UTILS = window.wfsAmbientColors;
   const LOG = (...a) => console.log('[WFS]', ...a);
   const CRUMB = (category, message, data) => {
     if (window.wfsCrumb) window.wfsCrumb(category, message, data);
@@ -50,6 +56,20 @@
 
   let settings = { ...DEFAULTS };
 
+  let ambientGlass = null;
+  let ambientPlayer = null;
+  let ambientVideo = null;
+  let ambientCanvas = null;
+  let ambientContext = null;
+  let ambientFrame = null;
+  let ambientLastSampleAt = 0;
+  let ambientSampleUnavailable = false;
+  let ambientResizeObserver = null;
+  let ambientColors = {
+    left: [...AMBIENT_DEFAULT_COLOR],
+    right: [...AMBIENT_DEFAULT_COLOR],
+  };
+
   const ICON_SVG = '<svg fill="none" height="24" viewBox="0 0 24 24" width="24"><path class="ytp-svg-fill" fill="#fff" fill-rule="evenodd" d="M 3,4 L 21,4 L 21,20 L 3,20 Z M 5,6 L 5,18 L 19,18 L 19,6 Z"/><rect class="ytp-svg-fill" fill="#fff" x="7" y="8" width="10" height="8"/></svg>';
 
   const CHAT_ICON_SVG = '<svg fill="none" height="24" viewBox="0 0 24 24" width="24"><path class="ytp-svg-fill" fill="#fff" d="M 3,5 L 21,5 L 21,17 L 13,17 L 9,21 L 9,17 L 3,17 Z"/></svg>';
@@ -72,6 +92,7 @@
     syncMenuItemStates();
     updateChatVisibilityClass();
     applyNonStickyChatLayout();
+    updateAmbientGlassVisibility();
     if (isActive()) notifyResize();
   }
 
@@ -191,6 +212,202 @@
     return document.documentElement.classList.contains(ACTIVE_CLASS);
   }
 
+  function ambientColorToCss(color) {
+    return `rgb(${color[0]}, ${color[1]}, ${color[2]})`;
+  }
+
+  function applyAmbientColors() {
+    if (!ambientGlass) return;
+    ambientGlass.style.setProperty('--wfs-glass-left', ambientColorToCss(ambientColors.left));
+    ambientGlass.style.setProperty('--wfs-glass-right', ambientColorToCss(ambientColors.right));
+  }
+
+  function updateAmbientGeometry() {
+    if (!ambientGlass || !ambientPlayer) return;
+    const video = ambientVideo || document.querySelector(SEL.video);
+    const playerRect = ambientPlayer.getBoundingClientRect();
+    if (!video || !playerRect.width || !playerRect.height) {
+      ambientGlass.classList.remove('wfs-has-side-bars');
+      ambientGlass.style.setProperty('--wfs-glass-side-width', '0px');
+      return;
+    }
+
+    const sideWidth = AMBIENT_UTILS.letterboxSideWidth(
+      playerRect.width,
+      playerRect.height,
+      video.videoWidth,
+      video.videoHeight
+    );
+    const width = Math.max(0, Math.floor(sideWidth));
+    ambientGlass.style.setProperty('--wfs-glass-side-width', width + 'px');
+    ambientGlass.classList.toggle('wfs-has-side-bars', isActive() && width >= 4);
+  }
+
+  function getAmbientGlass() {
+    const player = document.querySelector(SEL.player);
+    if (!player) return null;
+
+    if (ambientPlayer !== player) {
+      if (ambientResizeObserver) ambientResizeObserver.disconnect();
+      ambientPlayer = player;
+      ambientGlass = null;
+      ambientVideo = null;
+      ambientResizeObserver = null;
+    }
+
+    if (!ambientGlass) {
+      ambientGlass = document.createElement('div');
+      ambientGlass.id = AMBIENT_GLASS_ID;
+
+      const left = document.createElement('div');
+      left.className = 'wfs-ambient-bar wfs-ambient-bar-left';
+      const right = document.createElement('div');
+      right.className = 'wfs-ambient-bar wfs-ambient-bar-right';
+      ambientGlass.append(left, right);
+      player.insertBefore(ambientGlass, player.firstChild);
+      applyAmbientColors();
+
+      if (typeof ResizeObserver === 'function') {
+        ambientResizeObserver = new ResizeObserver(updateAmbientGeometry);
+        ambientResizeObserver.observe(player);
+      }
+    }
+    return ambientGlass;
+  }
+
+  function updateAmbientGlassVisibility() {
+    if (!isActive()) {
+      if (ambientGlass) {
+        ambientGlass.classList.remove('wfs-has-side-bars');
+        ambientGlass.style.setProperty('--wfs-glass-side-width', '0px');
+      }
+      return;
+    }
+
+    getAmbientGlass();
+    updateAmbientGeometry();
+  }
+
+  function resetAmbientVideo(video) {
+    if (ambientVideo === video) return;
+    ambientVideo = video;
+    ambientLastSampleAt = 0;
+    ambientSampleUnavailable = false;
+    ambientColors = {
+      left: [...AMBIENT_DEFAULT_COLOR],
+      right: [...AMBIENT_DEFAULT_COLOR],
+    };
+    applyAmbientColors();
+    updateAmbientGeometry();
+  }
+
+  function ensureAmbientCanvas() {
+    if (ambientCanvas) return ambientContext;
+    ambientCanvas = document.createElement('canvas');
+    ambientCanvas.width = AMBIENT_SAMPLE_WIDTH;
+    ambientCanvas.height = AMBIENT_SAMPLE_HEIGHT;
+    try {
+      ambientContext = ambientCanvas.getContext('2d', { willReadFrequently: true });
+    } catch (_) {
+      ambientContext = ambientCanvas.getContext('2d');
+    }
+    return ambientContext;
+  }
+
+  function scheduleAmbientFrame() {
+    if (ambientFrame === null && isActive() && document.visibilityState !== 'hidden') {
+      ambientFrame = requestAnimationFrame(sampleAmbientFrame);
+    }
+  }
+
+  function sampleAmbientFrame(now) {
+    ambientFrame = null;
+    if (!isActive() || document.visibilityState === 'hidden') return;
+
+    const glass = getAmbientGlass();
+    const video = document.querySelector(SEL.video);
+    if (!glass || !video) {
+      scheduleAmbientFrame();
+      return;
+    }
+    resetAmbientVideo(video);
+
+    if (!video.videoWidth || !video.videoHeight || video.readyState < 2) {
+      scheduleAmbientFrame();
+      return;
+    }
+    if (now - ambientLastSampleAt < AMBIENT_SAMPLE_INTERVAL_MS) {
+      scheduleAmbientFrame();
+      return;
+    }
+    ambientLastSampleAt = now;
+
+    const context = ensureAmbientCanvas();
+    if (!context || ambientSampleUnavailable) {
+      scheduleAmbientFrame();
+      return;
+    }
+
+    try {
+      context.drawImage(
+        video,
+        0,
+        0,
+        video.videoWidth,
+        video.videoHeight,
+        0,
+        0,
+        AMBIENT_SAMPLE_WIDTH,
+        AMBIENT_SAMPLE_HEIGHT
+      );
+      const pixels = context.getImageData(0, 0, AMBIENT_SAMPLE_WIDTH, AMBIENT_SAMPLE_HEIGHT).data;
+      const next = AMBIENT_UTILS.sampleSideColors(
+        pixels,
+        AMBIENT_SAMPLE_WIDTH,
+        AMBIENT_SAMPLE_HEIGHT
+      );
+      ambientColors = {
+        left: AMBIENT_UTILS.blendColor(ambientColors.left, next.left),
+        right: AMBIENT_UTILS.blendColor(ambientColors.right, next.right),
+      };
+      applyAmbientColors();
+    } catch (e) {
+      // A media response without CORS headers taints the canvas. Keep the
+      // feature optional and quiet in that case; the player must still work.
+      ambientSampleUnavailable = true;
+      LOG('ambient color sampling unavailable', e.name || e);
+    }
+
+    scheduleAmbientFrame();
+  }
+
+  function startAmbientSampling() {
+    if (!isActive()) return;
+    getAmbientGlass();
+    updateAmbientGlassVisibility();
+    scheduleAmbientFrame();
+  }
+
+  function stopAmbientSampling() {
+    if (ambientFrame !== null) cancelAnimationFrame(ambientFrame);
+    ambientFrame = null;
+    ambientVideo = null;
+    ambientLastSampleAt = 0;
+    ambientSampleUnavailable = false;
+    ambientColors = {
+      left: [...AMBIENT_DEFAULT_COLOR],
+      right: [...AMBIENT_DEFAULT_COLOR],
+    };
+    applyAmbientColors();
+  }
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') stopAmbientSampling();
+    else if (isActive()) startAmbientSampling();
+  });
+
+  window.addEventListener('resize', updateAmbientGeometry);
+
   function setActive(on) {
     CRUMB('ui', on ? 'enter windowed fullscreen' : 'exit windowed fullscreen', {
       theater: isInTheaterMode(),
@@ -207,6 +424,8 @@
     document.documentElement.classList.toggle(ACTIVE_CLASS, on);
     if (!on) revealMasthead(false);
     applySettings();
+    if (on) startAmbientSampling();
+    else stopAmbientSampling();
     notifyResize();
   }
 
@@ -922,6 +1141,8 @@
       watchPopupState();
       updateChatVisibilityClass();
       applyNonStickyChatLayout();
+      updateAmbientGlassVisibility();
+      if (isActive()) scheduleAmbientFrame();
       maybeAutoToggle();
     });
   }

@@ -30,6 +30,7 @@ Built for ultrawide and dual-monitor users who lose real estate to YouTube's let
 ## Features
 
 - **Native player button** in YouTube's own control bar — not a toolbar popup, not a floating widget
+- **Live ambient glass bars** on ultrawide theater-mode players, sampled from the video's current frame
 - **Rebindable hotkey** (default `Shift+F`): click the key in the popup and press a new one. `Esc` to exit
 - **Auto-toggle** on new video (optional)
 - **Scrollable mode** — keep scrolling past the player to reach comments and related videos

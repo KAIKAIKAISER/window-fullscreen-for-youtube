@@ -34,10 +34,82 @@ html.wfs-active ytd-app ytd-watch-grid #player-full-bleed-container.ytd-watch-gr
 html.wfs-active #movie_player:not(.miniplayer) {
   height: 100vh !important;
   width: 100% !important;
+  isolation: isolate;
 }
 
 html.wfs-active .html5-video-player {
   z-index: 1000 !important;
+}
+
+/* On an ultrawide player, YouTube letterboxes a narrower video with empty space
+   on either side. Keep the ambient layer behind the video and controls so those
+   strips can borrow the video's live edge colours without intercepting input. */
+#wfs-ambient-glass {
+  display: none;
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+
+html.wfs-active #movie_player:not(.miniplayer) #wfs-ambient-glass {
+  display: block;
+}
+
+#wfs-ambient-glass .wfs-ambient-bar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: var(--wfs-glass-side-width, 0px);
+  overflow: hidden;
+  opacity: 0;
+  transition: width 0.18s ease-out, opacity 0.18s ease-out;
+}
+
+#wfs-ambient-glass .wfs-ambient-bar::before {
+  content: '';
+  position: absolute;
+  inset: -36px;
+  background: inherit;
+  filter: blur(28px) saturate(1.35);
+  transform: scale(1.12);
+}
+
+#wfs-ambient-glass .wfs-ambient-bar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+#wfs-ambient-glass .wfs-ambient-bar-left {
+  left: 0;
+  background: linear-gradient(
+    90deg,
+    rgba(0, 0, 0, 0.52),
+    var(--wfs-glass-left, #121212) 68%,
+    var(--wfs-glass-left, #121212)
+  );
+}
+
+#wfs-ambient-glass .wfs-ambient-bar-right {
+  right: 0;
+  background: linear-gradient(
+    270deg,
+    rgba(0, 0, 0, 0.52),
+    var(--wfs-glass-right, #121212) 68%,
+    var(--wfs-glass-right, #121212)
+  );
+}
+
+html.wfs-active #wfs-ambient-glass.wfs-has-side-bars .wfs-ambient-bar {
+  opacity: 0.96;
+}
+
+html.wfs-active #movie_player:not(.miniplayer) video.html5-main-video {
+  position: relative;
+  z-index: 1 !important;
 }
 
 html.wfs-active.wfs-chat-visible #movie_player:not(.miniplayer) {

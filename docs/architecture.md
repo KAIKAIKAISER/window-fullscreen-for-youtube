@@ -81,6 +81,18 @@ script works *with* YouTube:
 A `MutationObserver` watches the watch container's `theater` attribute and auto-exits
 if YouTube drops theater mode underneath us.
 
+### Ambient glass bars
+
+When theater mode is wider than the video's aspect ratio, `content.js` adds a
+`#wfs-ambient-glass` layer behind the video. Its two bars are sized from the
+player and video dimensions, so they appear only in the pillarbox space. An
+offscreen 18x10 canvas draws the current video frame about 12 times per second;
+the left and right thirds are averaged independently and eased into CSS colors.
+The canvas read is best-effort because a media response without CORS headers can
+taint it. In that case the bars stay on the dark fallback color and playback is
+untouched. Sampling pauses while the tab is hidden and when windowed fullscreen
+is inactive.
+
 ## The gear-menu submenu
 
 One row in YouTube's menu, opening a panel of ours. Three rows inline nearly doubled the
