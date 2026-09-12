@@ -13,6 +13,13 @@
 
 const WHATS_NEW_ENTRIES = [
   {
+    version: '0.4.2',
+    highlights: [
+      'Ultrawide theater mode now fills its left and right pillarbox bars with soft colors sampled from the current video frame.',
+      'The ambient colors update smoothly while the video plays and pause when the tab is hidden.',
+    ],
+  },
+  {
     version: '0.4.1',
     highlights: [
       "The buttons now work on a stream that has not started yet. YouTube takes its control bar away on the waiting screen, so they sit on the player's top-right corner until the stream begins and then move back.",

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-09-12
+
+### Added
+- **Live ambient glass bars for ultrawide theater mode.** When the player is wider than
+  the video, the left and right pillarbox spaces now use colors sampled independently from
+  the video's current frame. The colors ease between frames, pause while the tab is hidden,
+  and fall back to a dark neutral when the browser blocks canvas reads.
+
 ## [0.4.1] - 2026-09-03
 
 <table>
